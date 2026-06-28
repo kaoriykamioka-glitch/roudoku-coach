@@ -199,6 +199,7 @@
   }
   #shikishi{
     position:relative;
+    z-index:6;
     width:min(86vw,1180px);
     height:min(82vh,860px);
     background:var(--washi-panel);
@@ -920,9 +921,14 @@
   (function init(){
     try {
       var saved = safeStorageGet('roudokujuku_sheet_url');
-      if (saved) document.getElementById('sheet-url').value = saved;
+      if (saved) {
+        document.getElementById('sheet-url').value = saved;
+        setStatus('前回のURLを自動読み込み中…', '');
+        loadFromUrl(false);
+        return;
+      }
 
-      // サンプルデータ（接続前のデザイン確認用）
+      // 接続前：サンプルデータ（デザイン確認用）
       state.header = '本日のお題は、「夏について」';
       state.rows = [
         { timestamp: new Date(), text: '夕立がきて、アスファルトの匂いが立つ。あの匂いがすると、いつも小学校の帰り道を思い出す。' },
@@ -930,7 +936,7 @@
         { timestamp: new Date(), text: '冷えた麦茶を飲むと、祖母の家の縁側を思い出す。扇風機の音、畳の匂い、それから蚊取り線香。ただそれだけのことなのに、いつまでも忘れられない夏の午後がある。' }
       ];
       applyFilterAndRender();
-      setStatus('サンプル表示中（上の欄にシートURLを入れて読み込んでください）', '');
+      setStatus('サンプル表示中（上の欄にURLを入れて読み込んでください）', '');
     } catch(e) {
       showFatalError(e.message);
     }
