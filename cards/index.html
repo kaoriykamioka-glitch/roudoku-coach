@@ -157,8 +157,8 @@
     width:100%;height:80px;resize:vertical;
     font-family:'Shippori Mincho', serif;
     font-size:13px;line-height:1.7;
-    background:var(--washi);
-    border:1px solid var(--line);
+    background:var(--washi-panel-2);
+    border:1px solid rgba(43,38,32,0.28);
     color:var(--sumi);
     border-radius:8px;
     padding:8px 10px;
@@ -166,7 +166,11 @@
   }
   #input-panel textarea:focus{outline:none;border-color:var(--kin);}
   #input-panel .row{display:flex;gap:8px;align-items:center;}
-  #input-panel .row input[type=text]{font-size:12px;padding:7px 10px;}
+  #input-panel .row input[type=text]{
+    font-size:12px;padding:7px 10px;
+    background:var(--washi-panel-2);
+    border:1px solid rgba(43,38,32,0.28);
+  }
   .card-item.manual .seal{background:var(--kin);}
   .card-item.manual .tag{
     font-size:10px;color:var(--kin);
@@ -394,6 +398,7 @@
         <div id="bgm-tracks"></div>
         <div id="bgm-controls">
           <button id="btn-bgm-stop">■ 停止</button>
+          <button id="btn-bgm-clear" title="保存済み曲を全削除">🗑</button>
           <input type="range" id="bgm-vol" min="0" max="1" step="0.01" value="0.7">
         </div>
         <div id="bgm-nowplaying">再生中の曲はありません</div>
@@ -814,7 +819,12 @@
   function renderPresent(){
     if (state.currentIndex < 0 || !state.filtered[state.currentIndex]) return;
     var r = state.filtered[state.currentIndex];
-    document.getElementById('theme-label').textContent = state.header;
+    // 直接入力カード：ラベルがあればそれを、なければ「直接入力」を表示
+    // フォーム回答：通常通りお題（state.header）を表示
+    var headerText = r.manual
+      ? (r.label || '直接入力')
+      : state.header;
+    document.getElementById('theme-label').textContent = headerText;
     var bodyEl = document.getElementById('body-text');
     bodyEl.textContent = r.text;
     bodyEl.style.fontSize = fitFontSize(r.text) + 'px';
@@ -854,10 +864,63 @@
 
   /* ===================== BGM ===================== */
 
+  /* ===================== BGM永続化（IndexedDB） ===================== */
+
+  var idb = { db: null };
+
+  function openIdb(){
+    return new Promise(function(resolve){
+      try {
+        var req = indexedDB.open('koe-shikishi-bgm', 1);
+        req.onupgradeneeded = function(e){
+          e.target.result.createObjectStore('tracks', { keyPath: 'name' });
+        };
+        req.onsuccess = function(e){ idb.db = e.target.result; resolve(idb.db); };
+        req.onerror = function(){ resolve(null); };
+      } catch(e){ resolve(null); }
+    });
+  }
+
+  function saveBgmToIdb(name, blob){
+    if (!idb.db) return;
+    try {
+      var tx = idb.db.transaction('tracks', 'readwrite');
+      tx.objectStore('tracks').put({ name: name, blob: blob });
+    } catch(e){}
+  }
+
+  function loadBgmFromIdb(){
+    if (!idb.db) return;
+    try {
+      var tx = idb.db.transaction('tracks', 'readonly');
+      var req = tx.objectStore('tracks').getAll();
+      req.onsuccess = function(e){
+        var saved = e.target.result || [];
+        if (saved.length === 0) return;
+        saved.forEach(function(t){
+          var url = URL.createObjectURL(t.blob);
+          bgm.tracks.push({ name: t.name, url: url });
+        });
+        renderTracks();
+        setStatus(saved.length + '曲のBGMを自動復元しました', 'ok');
+      };
+    } catch(e){}
+  }
+
+  function clearBgmIdb(){
+    if (!idb.db) return;
+    try {
+      var tx = idb.db.transaction('tracks', 'readwrite');
+      tx.objectStore('tracks').clear();
+    } catch(e){}
+  }
+
   function handleBgmFiles(fileList){
     Array.prototype.forEach.call(fileList, function(f){
       var url = URL.createObjectURL(f);
-      bgm.tracks.push({ name: f.name.replace(/\.[^/.]+$/, ''), url: url });
+      var name = f.name.replace(/\.[^/.]+$/, '');
+      bgm.tracks.push({ name: name, url: url });
+      saveBgmToIdb(name, f);
     });
     renderTracks();
   }
@@ -971,6 +1034,14 @@
     e.target.value = '';
   });
   document.getElementById('btn-bgm-stop').addEventListener('click', stopBgm);
+  document.getElementById('btn-bgm-clear').addEventListener('click', function(){
+    stopBgm();
+    bgm.tracks = [];
+    bgm.playingIndex = -1;
+    clearBgmIdb();
+    renderTracks();
+    document.getElementById('bgm-nowplaying').textContent = '再生中の曲はありません';
+  });
   document.getElementById('bgm-vol').addEventListener('input', function(e){
     bgm.audio.volume = parseFloat(e.target.value);
   });
@@ -992,6 +1063,9 @@
   /* ===================== 初期化 ===================== */
 
   (function init(){
+    // IndexedDBを開いてBGMを自動復元
+    openIdb().then(function(){ loadBgmFromIdb(); });
+
     try {
       var saved = safeStorageGet('roudokujuku_sheet_url');
       if (saved) {
