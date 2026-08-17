@@ -149,6 +149,31 @@
   /* ---------- BGMパネル ---------- */
   #bgm-panel{border-top:1px solid var(--line);padding:14px 16px;flex-shrink:0;}
   #bgm-panel h2{margin:0 0 10px;font-size:14px;font-weight:500;color:var(--sumi-dim);}
+
+  /* ---------- 直接入力パネル ---------- */
+  #input-panel{border-top:1px solid var(--line);padding:14px 16px;flex-shrink:0;}
+  #input-panel h2{margin:0 0 10px;font-size:14px;font-weight:500;color:var(--sumi-dim);}
+  #input-panel textarea{
+    width:100%;height:80px;resize:vertical;
+    font-family:'Shippori Mincho', serif;
+    font-size:13px;line-height:1.7;
+    background:var(--washi);
+    border:1px solid var(--line);
+    color:var(--sumi);
+    border-radius:8px;
+    padding:8px 10px;
+    margin-bottom:8px;
+  }
+  #input-panel textarea:focus{outline:none;border-color:var(--kin);}
+  #input-panel .row{display:flex;gap:8px;align-items:center;}
+  #input-panel .row input[type=text]{font-size:12px;padding:7px 10px;}
+  .card-item.manual .seal{background:var(--kin);}
+  .card-item.manual .tag{
+    font-size:10px;color:var(--kin);
+    border:1px solid var(--kin);
+    border-radius:4px;padding:1px 5px;
+    margin-left:4px;vertical-align:middle;
+  }
   #bgm-load-row{display:flex;gap:8px;margin-bottom:10px;}
   #bgm-tracks{max-height:140px;overflow-y:auto;display:flex;flex-direction:column;gap:5px;margin-bottom:10px;}
   .track-row{
@@ -351,6 +376,15 @@
       </div>
       <div id="cardlist" class="scrollbar"></div>
 
+      <div id="input-panel">
+        <h2>直接入力</h2>
+        <textarea id="input-text" placeholder="詩・朗読テキストをここに入力…"></textarea>
+        <div class="row">
+          <input type="text" id="input-label" placeholder="ラベル（任意）" style="flex:1;">
+          <button id="btn-add-card" class="primary">追加</button>
+        </div>
+      </div>
+
       <div id="bgm-panel">
         <h2>BGM</h2>
         <div id="bgm-load-row">
@@ -421,6 +455,7 @@
   /* ===================== 状態 ===================== */
   var state = {
     rows: [],          // {timestamp: Date, text: string}
+    manualRows: [],    // {text: string, label: string} 直接入力カード
     header: '本日のお題',
     filtered: [],
     currentIndex: -1,
@@ -689,14 +724,26 @@
   function applyFilterAndRender(){
     var today = new Date();
     var onlyToday = document.getElementById('chk-today').checked;
-    state.filtered = state.rows.filter(function(r){
+    var fromForm = state.rows.filter(function(r){
       if (!onlyToday) return true;
-      if (!r.timestamp) return true; // タイムスタンプ不明は表示する
+      if (!r.timestamp) return true;
       return isSameDay(r.timestamp, today);
     });
+    // 手動入力カードは日付フィルタに関係なく常に表示、かつ先頭に並べる
+    state.filtered = state.manualRows.concat(fromForm);
     renderList();
     document.getElementById('count-tag').textContent = state.filtered.length + '件';
     if (state.currentIndex >= state.filtered.length) state.currentIndex = state.filtered.length - 1;
+  }
+
+  function addManualCard(){
+    var text = document.getElementById('input-text').value.trim();
+    if (!text) return;
+    var label = document.getElementById('input-label').value.trim();
+    state.manualRows.push({ text: text, label: label, manual: true });
+    document.getElementById('input-text').value = '';
+    document.getElementById('input-label').value = '';
+    applyFilterAndRender();
   }
 
   function renderList(){
@@ -705,23 +752,43 @@
     if (state.filtered.length === 0) {
       listEl.innerHTML =
         '<div id="empty-state"><span class="big">まだ回答がありません</span>' +
-        '上の欄にシートのURLを貼って読み込むか、<br>フォームの回答が届くのを待ってください。</div>';
+        '上の欄にURLを貼って読み込むか、<br>下の直接入力からテキストを追加してください。</div>';
       return;
     }
     state.filtered.forEach(function(r, idx){
       var item = document.createElement('div');
-      item.className = 'card-item' + (idx === state.currentIndex ? ' active' : '');
+      item.className = 'card-item' + (r.manual ? ' manual' : '') + (idx === state.currentIndex ? ' active' : '');
       var snippet = r.text.length > 38 ? r.text.slice(0,38) + '…' : r.text;
       var timeStr = r.timestamp ? formatTime(r.timestamp) : '';
+      var labelTag = r.label ? '<span class="tag">' + escapeHtml(r.label) + '</span>' : '';
+      var delBtn = r.manual
+        ? '<button class="delbtn" title="削除" style="margin-left:auto;padding:2px 7px;font-size:11px;flex-shrink:0;">✕</button>'
+        : '';
       item.innerHTML =
         '<span class="seal">' + (idx+1) + '</span>' +
-        '<span class="snippet">' + escapeHtml(snippet) + '</span>' +
-        (timeStr ? '<span class="time">' + timeStr + '</span>' : '');
-      item.addEventListener('click', function(){
+        '<span class="snippet">' + escapeHtml(snippet) + labelTag + '</span>' +
+        (timeStr ? '<span class="time">' + timeStr + '</span>' : '') +
+        (r.manual ? '<div style="display:flex;margin-top:4px;margin-left:28px;">' + delBtn + '</div>' : '');
+      item.querySelector('.snippet').addEventListener('click', function(){
         state.currentIndex = idx;
         renderList();
         enterPresent();
       });
+      if (r.manual) {
+        item.querySelector('.delbtn').addEventListener('click', function(e){
+          e.stopPropagation();
+          var mi = state.manualRows.indexOf(r);
+          if (mi !== -1) state.manualRows.splice(mi, 1);
+          if (state.currentIndex >= idx) state.currentIndex = Math.max(-1, state.currentIndex - 1);
+          applyFilterAndRender();
+        });
+      } else {
+        item.addEventListener('click', function(){
+          state.currentIndex = idx;
+          renderList();
+          enterPresent();
+        });
+      }
       listEl.appendChild(item);
     });
   }
@@ -861,6 +928,11 @@
   }
 
   /* ===================== イベント結線 ===================== */
+
+  document.getElementById('btn-add-card').addEventListener('click', addManualCard);
+  document.getElementById('input-text').addEventListener('keydown', function(e){
+    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); addManualCard(); }
+  });
 
   document.getElementById('btn-load').addEventListener('click', function(){ loadFromUrl(false); });
   document.getElementById('btn-refresh').addEventListener('click', function(){ loadFromUrl(false); });
