@@ -353,7 +353,7 @@
   <div id="setup">
     <div class="title">声の色紙</div>
     <div class="urlbox">
-      <input type="url" id="sheet-url" placeholder="Apps ScriptのWebアプリURL（または回答シートのURL）を貼り付け">
+      <input type="url" id="sheet-url" placeholder="Apps ScriptのWebアプリURLを貼り付け（https://script.google.com/macros/...）">
     </div>
     <button id="btn-load">読み込む</button>
     <button id="btn-refresh" title="最新の回答を再取得">更新</button>
@@ -1066,24 +1066,14 @@
     // IndexedDBを開いてBGMを自動復元
     openIdb().then(function(){ loadBgmFromIdb(); });
 
-    try {
-      var saved = safeStorageGet('roudokujuku_sheet_url');
-      if (saved) {
-        document.getElementById('sheet-url').value = saved;
-        setStatus('前回のURLを自動読み込み中…', '');
-        loadFromUrl(false);
-        return;
-      }
+    // ★ Apps ScriptのURL（変更する場合はこの行を書き換えてアップロードし直す）
+    var FIXED_URL = 'https://script.google.com/macros/s/AKfycbzqA0NlbRSgZ-JwCc1bsTH5oGeggXAtnsh-tuIqDGf1nOdDGjHJrbp12lCGH_PYm26bQw/exec';
 
-      // 接続前：サンプルデータ（デザイン確認用）
-      state.header = '本日のお題は、「夏について」';
-      state.rows = [
-        { timestamp: new Date(), text: '夕立がきて、アスファルトの匂いが立つ。あの匂いがすると、いつも小学校の帰り道を思い出す。' },
-        { timestamp: new Date(), text: '蝉の声' },
-        { timestamp: new Date(), text: '冷えた麦茶を飲むと、祖母の家の縁側を思い出す。扇風機の音、畳の匂い、それから蚊取り線香。ただそれだけのことなのに、いつまでも忘れられない夏の午後がある。' }
-      ];
-      applyFilterAndRender();
-      setStatus('サンプル表示中（上の欄にURLを入れて読み込んでください）', '');
+    try {
+      document.getElementById('sheet-url').value = FIXED_URL;
+      safeStorageSet('roudokujuku_sheet_url', FIXED_URL);
+      setStatus('接続中…', '');
+      loadFromUrl(false);
     } catch(e) {
       showFatalError(e.message);
     }
